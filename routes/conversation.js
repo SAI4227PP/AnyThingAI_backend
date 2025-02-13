@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
-const { notifyAllClients } = require('../middleware/sseMiddleware');
 
 // Route to create a new conversation or update an existing one
 router.post('/create', async (req, res) => {
@@ -13,7 +12,7 @@ router.post('/create', async (req, res) => {
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    let conversation = await Conversation.findOne({ sessionId });
+    let conversation = await Conversation.findOne({ sessionId, userId });
 
     if (!conversation) {
       conversation = new Conversation({
@@ -31,9 +30,6 @@ router.post('/create', async (req, res) => {
 
     await conversation.save();
 
-    // Broadcast update via SSE
-    notifyAllClients('message_update', conversation);
-
     res.status(200).json({
       success: true,
       conversation
@@ -44,10 +40,11 @@ router.post('/create', async (req, res) => {
   }
 });
 
-// Route to get a conversation by sessionId
-router.get('/:sessionId', async (req, res) => {
+// Route to get a conversation by sessionId and userId
+router.get('/:sessionId/:userId', async (req, res) => {
   try {
-    const conversation = await Conversation.findOne({ sessionId: req.params.sessionId });
+    const { sessionId, userId } = req.params;
+    const conversation = await Conversation.findOne({ sessionId, userId });
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
@@ -59,12 +56,12 @@ router.get('/:sessionId', async (req, res) => {
 });
 
 // Route to handle both text and code messages
-router.post('/:sessionId/message', async (req, res) => {
+router.post('/:sessionId/:userId/message', async (req, res) => {
   try {
-    const { sessionId } = req.params;
+    const { sessionId, userId } = req.params;
     const { text, isCode, language } = req.body;
 
-    const conversation = await Conversation.findOne({ sessionId });
+    const conversation = await Conversation.findOne({ sessionId, userId });
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
