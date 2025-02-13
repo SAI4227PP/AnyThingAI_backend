@@ -9,8 +9,8 @@ router.post('/create', async (req, res) => {
 
     // Validate message format
     if (!Array.isArray(messages) || !messages.every(msg => 
-      'userMessage' in msg && 
-      'botResponse' in msg && 
+      'message' in msg && 
+      Array.isArray(msg.botResponse) &&
       'timestamp' in msg
     )) {
       return res.status(400).json({ error: 'Invalid message format' });
