@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
+const { broadcastToSession } = require('./sse');
 
 // Route to create a new conversation or update an existing one
 router.post('/create', async (req, res) => {
@@ -32,6 +33,13 @@ router.post('/create', async (req, res) => {
     }
 
     await conversation.save();
+
+    // Broadcast update via SSE
+    broadcastToSession(sessionId, {
+      type: 'message_update',
+      data: conversation
+    });
+
     res.status(200).json({
       success: true,
       conversation
