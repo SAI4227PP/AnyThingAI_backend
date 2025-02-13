@@ -1,25 +1,15 @@
-// models/Conversation.js
-
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
 const messageSchema = new Schema({
-  message: {
+  userMessage: {
     type: String,
     required: true
   },
-  botResponse: [{
-    type: {
-      type: String,
-      enum: ['text', 'code'],
-      required: true
-    },
-    content: {
-      type: String,
-      required: true
-    },
-    language: String
-  }],
+  botResponse: {
+    type: String,
+    required: true
+  },
   timestamp: {
     type: Number,
     required: true
@@ -29,8 +19,7 @@ const messageSchema = new Schema({
 const conversationSchema = new Schema({
   sessionId: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   userId: {
     type: String,
@@ -40,17 +29,16 @@ const conversationSchema = new Schema({
     type: String,
     required: true
   },
-  sessionName: { // This is still required, but won't be updated later
+  sessionName: {
     type: String,
     required: true
   },
-  messages: [messageSchema],  // Array of messages for each session
+  messages: [messageSchema],  // Each record contains both user and bot messages
   lastActive: {
     type: Date,
-    default: Date.now  // Default to the current time
+    default: Date.now
   }
-}, { timestamps: true });  // Add timestamps for when the document is created/updated
+}, { timestamps: true });
 
-// Create and export the model
 const Conversation = mongoose.model('Conversation', conversationSchema);
 module.exports = Conversation;
