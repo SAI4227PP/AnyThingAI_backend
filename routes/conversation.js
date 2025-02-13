@@ -1,19 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
-const { broadcastToSession } = require('./sse');
+const { notifyAllClients } = require('../middleware/sseMiddleware');
 
 // Route to create a new conversation or update an existing one
 router.post('/create', async (req, res) => {
   try {
-    const { sessionId, userId, receiverId, sessionName, messages } = req.body;
+    const { sessionId, userId, receiverId, sessionName, newMessage, lastActive } = req.body;
 
     // Validate message format
-    if (!Array.isArray(messages) || !messages.every(msg => 
-      'userMessage' in msg && 
-      'botResponse' in msg && 
-      'timestamp' in msg
-    )) {
+    if (!newMessage || !newMessage.userMessage || !newMessage.botResponse || !newMessage.timestamp) {
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
@@ -25,20 +21,18 @@ router.post('/create', async (req, res) => {
         userId,
         receiverId,
         sessionName,
-        messages
+        messages: [newMessage],
+        lastActive
       });
     } else {
-      conversation.messages.push(...messages);
-      conversation.lastActive = Date.now();
+      conversation.messages.push(newMessage);
+      conversation.lastActive = lastActive;
     }
 
     await conversation.save();
 
     // Broadcast update via SSE
-    broadcastToSession(sessionId, {
-      type: 'message_update',
-      data: conversation
-    });
+    notifyAllClients('message_update', conversation);
 
     res.status(200).json({
       success: true,
@@ -75,18 +69,33 @@ router.post('/:sessionId/message', async (req, res) => {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    conversation.messages.push({
+    const userMessage = {
       userMessage: text,
       botResponse: '', // Will be filled by the AI response
       timestamp: Date.now()
-    });
+    };
+
+    conversation.messages.push(userMessage);
 
     await conversation.save();
+
+    // Process the bot response
+    const botResponse = await processBotResponse(text, isCode, language);
+    userMessage.botResponse = botResponse;
+
+    await conversation.save();
+
     res.status(200).json({ conversation });
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Failed to save message' });
   }
 });
+
+// Function to process bot response
+const processBotResponse = async (text, isCode, language) => {
+  // Implement your AI response logic here
+  return "Hello there! How can I assist you today?";
+};
 
 module.exports = router;
