@@ -4,22 +4,14 @@ const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
 const messageSchema = new Schema({
-  message: {
+  userMessage: {
     type: String,
     required: true
   },
-  botResponse: [{
-    type: {
-      type: String,
-      enum: ['text', 'code'],
-      required: true
-    },
-    content: {
-      type: String,
-      required: true
-    },
-    language: String
-  }],
+  botResponse: {
+    type: String,
+    required: true
+  },
   timestamp: {
     type: Number,
     required: true
