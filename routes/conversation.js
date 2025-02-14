@@ -55,6 +55,38 @@ router.get('/:sessionId/:userId', async (req, res) => {
   }
 });
 
+// Route to get all conversations for a user with pagination
+router.get('/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [conversations, total] = await Promise.all([
+      Conversation.find({ userId })
+        .select('sessionId sessionName lastActive')
+        .sort({ lastActive: -1 })
+        .skip(skip)
+        .limit(limit),
+      Conversation.countDocuments({ userId })
+    ]);
+    
+    res.status(200).json({
+      conversations,
+      pagination: {
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        hasMore: skip + conversations.length < total
+      }
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Failed to fetch conversations' });
+  }
+});
+
 // Route to handle both text and code messages
 router.post('/:sessionId/:userId/message', async (req, res) => {
   try {
