@@ -8,9 +8,11 @@ const connectDB = require('./config/db');
 dotenv.config();
 const app = express();
 
-// Debug middleware
+// Debug middleware - Updated to show full path
 app.use((req, res, next) => {
-  console.log(`📨 ${req.method} ${req.url}`);
+  // Get the base route if it exists
+  const baseRoute = req.baseUrl || '';
+  console.log(`📨 ${req.method} ${baseRoute}${req.url}`);
   next();
 });
 
@@ -33,7 +35,11 @@ connectDB().then(() => {
     res.json({ status: 'ok', dbStatus: mongoose.connection.readyState });
   });
 
-  app.use('/conversations', conversationRoutes);
+  // Mount routes with debug info
+  app.use('/conversations', (req, res, next) => {
+    req.baseUrl = '/conversations'; // Ensure baseUrl is set
+    next();
+  }, conversationRoutes);
 
   // Error handling middleware
   app.use((err, req, res, next) => {
