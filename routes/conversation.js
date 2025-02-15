@@ -3,8 +3,13 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 
+const BATCH_LIMIT = 50; // Maximum messages per batch
+
 // Route to create a new conversation or update an existing one
 router.post('/conversations/create', async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     // Verify MongoDB connection
     if (mongoose.connection.readyState !== 1) {
@@ -12,22 +17,45 @@ router.post('/conversations/create', async (req, res) => {
       throw new Error('Database connection not established');
     }
 
-    const { sessionId, userId, receiverId, sessionName, newMessage, lastActive } = req.body;
+    const { sessionId, userId, receiverId, sessionName, messages, lastActive } = req.body;
 
-    // Validate required parameters
-    if (!sessionId || !userId || !newMessage) {
+    // Enhanced validation
+    if (!sessionId || !userId || !messages) {
       return res.status(400).json({ 
         success: false, 
         error: 'Missing required parameters' 
       });
     }
 
-    // Validate message format
-    if (!newMessage || !newMessage.userMessage || !newMessage.botResponse || !newMessage.timestamp) {
-      return res.status(400).json({ error: 'Invalid message format' });
+    // Validate batch size
+    if (!Array.isArray(messages)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Messages must be an array' 
+      });
     }
 
-    let conversation = await Conversation.findOne({ sessionId, userId });
+    if (messages.length > BATCH_LIMIT) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Batch size cannot exceed ${BATCH_LIMIT} messages` 
+      });
+    }
+
+    // Validate message format for each message in batch
+    const invalidMessages = messages.filter(msg => 
+      !msg || !msg.userMessage || !msg.botResponse || !msg.timestamp
+    );
+
+    if (invalidMessages.length > 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid message format in batch',
+        invalidCount: invalidMessages.length
+      });
+    }
+
+    let conversation = await Conversation.findOne({ sessionId, userId }).session(session);
 
     if (!conversation) {
       // Create new conversation
@@ -36,28 +64,57 @@ router.post('/conversations/create', async (req, res) => {
         userId,
         receiverId,
         sessionName,
-        messages: [newMessage],
+        messages: [],
         lastActive: lastActive || new Date().toISOString()
       });
-    } else {
-      // Update existing conversation
-      conversation.messages.push(newMessage);
+    }
+
+    // Deduplicate messages before adding
+    const existingTimestamps = new Set(
+      conversation.messages.map(msg => msg.timestamp.toString())
+    );
+
+    const newMessages = messages.filter(msg => 
+      !existingTimestamps.has(msg.timestamp.toString())
+    );
+
+    if (newMessages.length > 0) {
+      // Add new messages and update conversation
+      conversation.messages.push(...newMessages);
       conversation.lastActive = lastActive || new Date().toISOString();
       if (sessionName) conversation.sessionName = sessionName;
       if (receiverId) conversation.receiverId = receiverId;
+
+      await conversation.save({ session });
     }
 
-    await conversation.save();
+    // Commit transaction
+    await session.commitTransaction();
+    session.endSession();
 
+    // Return minimal response for better performance
     res.status(200).json({
       success: true,
-      data: conversation
+      data: {
+        sessionId: conversation.sessionId,
+        messageCount: conversation.messages.length,
+        lastActive: conversation.lastActive
+      }
     });
+
   } catch (error) {
-    console.error('Error:', error);
+    // Abort transaction on error
+    await session.abortTransaction();
+    session.endSession();
+
+    console.error('Error in conversation create:', error);
+    
+    // Enhanced error response
     res.status(500).json({ 
       success: false, 
-      error: error.message 
+      error: error.message,
+      code: error.code || 'UNKNOWN_ERROR',
+      timestamp: new Date().toISOString()
     });
   }
 });
