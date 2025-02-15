@@ -3,8 +3,8 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 
- // Route to create a new conversation or update an existing one
-router.post('/create', async (req, res) => {
+// Route to create a new conversation or update an existing one
+router.post('/conversations/create', async (req, res) => {
   try {
     // Verify MongoDB connection
     if (mongoose.connection.readyState !== 1) {
@@ -14,6 +14,14 @@ router.post('/create', async (req, res) => {
 
     const { sessionId, userId, receiverId, sessionName, newMessage, lastActive } = req.body;
 
+    // Validate required parameters
+    if (!sessionId || !userId || !newMessage) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required parameters' 
+      });
+    }
+
     // Validate message format
     if (!newMessage || !newMessage.userMessage || !newMessage.botResponse || !newMessage.timestamp) {
       return res.status(400).json({ error: 'Invalid message format' });
@@ -22,28 +30,35 @@ router.post('/create', async (req, res) => {
     let conversation = await Conversation.findOne({ sessionId, userId });
 
     if (!conversation) {
+      // Create new conversation
       conversation = new Conversation({
         sessionId,
         userId,
         receiverId,
         sessionName,
         messages: [newMessage],
-        lastActive
+        lastActive: lastActive || new Date().toISOString()
       });
     } else {
+      // Update existing conversation
       conversation.messages.push(newMessage);
-      conversation.lastActive = lastActive;
+      conversation.lastActive = lastActive || new Date().toISOString();
+      if (sessionName) conversation.sessionName = sessionName;
+      if (receiverId) conversation.receiverId = receiverId;
     }
 
     await conversation.save();
 
     res.status(200).json({
       success: true,
-      conversation
+      data: conversation
     });
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).json({ error: 'Something went wrong!' });
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
   }
 });
 
@@ -185,47 +200,6 @@ router.post('/:sessionId/:userId/message', async (req, res) => {
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Failed to save message' });
-  }
-});
-
-// Add new route for updating conversations
-router.post('/update', async (req, res) => {
-  try {
-    const { sessionId, userId, message } = req.body;
-
-    if (!sessionId || !userId || !message) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing required parameters' 
-      });
-    }
-
-    const conversation = await Conversation.findOne({ sessionId, userId });
-    
-    if (!conversation) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Conversation not found' 
-      });
-    }
-
-    // Add new message to conversation
-    conversation.messages.push(message);
-    conversation.lastActive = new Date().toISOString();
-    
-    await conversation.save();
-
-    res.status(200).json({
-      success: true,
-      data: conversation
-    });
-
-  } catch (error) {
-    console.error('Error updating conversation:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
   }
 });
 
